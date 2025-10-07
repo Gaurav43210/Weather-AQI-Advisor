@@ -1,0 +1,928 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>AQ-Vision — Frontend</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <!-- Tailwind (CDN) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+
+  <!-- Charts + PDF libs -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
+
+  <style>
+    body { font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
+    .chart-container { position: relative; width: 100%; max-width: 600px; margin: 0 auto; height: 350px; max-height: 400px; }
+    .smooth-scroll { scroll-behavior: smooth; }
+    .spinner { border: 4px solid rgba(0,0,0,0.06); width: 36px; height: 36px; border-radius: 50%; border-left-color: #0c4a6e; animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .insight-card { min-height: 120px; }
+    .input-label { font-size: 0.9rem; color: #475569; }
+    #map { width: 100%; height: 60vh; border-radius: 12px; border: 1px solid rgba(2,6,23,0.06); }
+    .std-card { background:#fff; padding:10px; border-radius:10px; box-shadow:0 2px 10px rgba(2,6,23,0.06); border:1px solid rgba(2,6,23,0.03); width:220px; margin-right:8px; display:inline-block; vertical-align:top; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 smooth-scroll">
+  <header class="bg-white/80 backdrop-blur-md shadow-sm sticky top-0 z-50">
+    <nav class="container mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between h-16">
+        <div class="flex items-center">
+          <span class="text-2xl font-bold text-sky-600">AQ-Vision</span>
+        </div>
+        <div class="hidden md:block">
+          <div class="ml-10 flex items-baseline space-x-4">
+            <a href="#map-section" class="text-slate-600 hover:bg-slate-100 hover:text-slate-900 px-3 py-2 rounded-md text-sm font-medium">Interactive Map</a>
+            <a href="#analysis-section" class="text-slate-600 hover:bg-slate-100 hover:text-slate-900 px-3 py-2 rounded-md text-sm font-medium">Data Analysis</a>
+            <a href="#insights-section" class="text-slate-600 hover:bg-slate-100 hover:text-slate-900 px-3 py-2 rounded-md text-sm font-medium">Insights</a>
+            <a href="#about-section" class="text-slate-600 hover:bg-slate-100 hover:text-slate-900 px-3 py-2 rounded-md text-sm font-medium">About</a>
+          </div>
+        </div>
+      </div>
+    </nav>
+  </header>
+
+  <main class="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <!-- MAP SECTION -->
+    <section id="map-section" class="mb-16">
+      <div class="text-center mb-8">
+        <h1 class="text-4xl font-extrabold tracking-tight text-slate-900 sm:text-5xl">AI-Driven Urban Air Quality Map</h1>
+        <p class="mt-4 max-w-2xl mx-auto text-lg text-slate-600">Interactive map with high-resolution AQ estimates. Click or draw a polygon to inspect zones.</p>
+      </div>
+
+      <div class="bg-white p-4 rounded-xl shadow-lg border border-slate-200">
+        <div class="mb-4 flex flex-col sm:flex-row gap-4">
+          <div class="flex-1">
+            <label for="pollutant-select" class="block text-sm font-medium text-slate-700">Select Pollutant:</label>
+            <select id="pollutant-select" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-slate-300 focus:outline-none focus:ring-sky-500 focus:border-sky-500 sm:text-sm rounded-md">
+              <option value="aqi" selected>Overall AQI</option>
+              <option value="pm25">PM2.5</option>
+              <option value="no2">NO₂</option>
+              <option value="o3">O₃</option>
+            </select>
+          </div>
+          <div class="flex-1">
+            <label for="date-slider" class="block text-sm font-medium text-slate-700">Date: <span id="date-label" class="font-bold text-sky-600"></span></label>
+            <input id="date-slider" type="range" min="1" max="7" value="7" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer mt-2">
+          </div>
+        </div>
+
+        <div class="mb-4 grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+          <div>
+            <label class="input-label">Search City</label>
+            <div class="flex gap-2 mt-1">
+              <input id="city-search" type="text" placeholder="Enter city name (e.g. Bangalore)" class="flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-sky-400" />
+              <button id="city-search-btn" class="bg-sky-600 text-white px-4 py-2 rounded-md hover:bg-sky-700">Search</button>
+            </div>
+            <p id="city-help" class="text-xs text-slate-500 mt-1">Uses OpenStreetMap Nominatim. No key required.</p>
+          </div>
+          <div>
+            <label class="input-label">Latitude</label>
+            <input id="lat-input" type="number" step="0.0001" placeholder="e.g. 12.9716" class="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-sky-400" />
+          </div>
+          <div>
+            <label class="input-label">Longitude</label>
+            <input id="lon-input" type="number" step="0.0001" placeholder="e.g. 77.5946" class="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-sky-400" />
+          </div>
+        </div>
+
+        <div class="flex gap-2 mb-4">
+          <button id="latlon-go" class="bg-emerald-600 text-white px-4 py-2 rounded-md hover:bg-emerald-700">Go to Coordinates</button>
+          <button id="use-location" class="bg-slate-700 text-white px-4 py-2 rounded-md hover:bg-slate-800">Use my location</button>
+          <button id="toggle-live" class="ml-auto bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700">Use live OpenAQ data</button>
+        </div>
+
+        <div id="pollutant-description" class="p-4 bg-slate-50 text-slate-700 rounded-lg text-sm mb-4">Select a pollutant to learn more about it.</div>
+
+        <div id="map"></div>
+
+        <div id="selected-area-details" class="hidden mt-4 bg-sky-50 p-4 rounded-xl">
+          <h3 class="text-xl font-bold text-sky-800">Selected Area Report</h3>
+          <div class="mt-2 text-sky-700 space-y-1">
+            <p><strong>Average AQI:</strong> <span id="avg-aqi"></span></p>
+            <p><strong>Highest AQI:</strong> <span id="max-aqi"></span></p>
+            <p><strong>Zones Included:</strong> <span id="zones-list"></span></p>
+          </div>
+          <button id="clear-area-button" class="mt-4 bg-sky-700 text-white font-semibold py-2 px-4 rounded-md shadow-md hover:bg-sky-800 transition-colors">Clear Selected Area</button>
+        </div>
+
+        <div id="multi-std" class="mt-6"></div>
+      </div>
+    </section>
+
+    <!-- ANALYSIS -->
+    <section id="analysis-section" class="mb-16">
+      <div class="text-center mb-12">
+        <h2 class="text-3xl font-bold text-slate-900">Project Analysis & Validation</h2>
+        <p class="mt-3 max-w-2xl mx-auto text-lg text-slate-600">Charts compare model predictions vs ground sensors and show AQI by zone.</p>
+      </div>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div class="bg-white p-6 rounded-xl shadow-lg border border-slate-200">
+          <h3 class="text-xl font-semibold mb-1 text-center">Model Prediction vs. Ground Truth</h3>
+          <div class="chart-container">
+            <canvas id="validationChart"></canvas>
+          </div>
+        </div>
+        <div class="bg-white p-6 rounded-xl shadow-lg border border-slate-200">
+          <h3 class="text-xl font-semibold mb-1 text-center">Average AQI by City Zone</h3>
+          <div class="chart-container">
+            <canvas id="zoneChart"></canvas>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- INSIGHTS -->
+    <section id="insights-section" class="mb-16">
+      <div class="text-center mb-12">
+        <h2 class="text-3xl font-bold text-slate-900">AI-Powered Insights</h2>
+        <p class="mt-3 max-w-2xl mx-auto text-lg text-slate-600">Instant AI-generated analysis and recommendations.</p>
+      </div>
+      <div class="bg-white p-6 rounded-xl shadow-lg border border-slate-200">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+          <button id="summarize-and-source-button" class="bg-sky-600 text-white font-semibold py-2 px-4 rounded-md shadow-md hover:bg-sky-700 transition-colors">Summarize & Sources</button>
+          <button id="health-recommendation-button" class="bg-amber-500 text-white font-semibold py-2 px-4 rounded-md shadow-md hover:bg-amber-600 transition-colors">Health Recommendations</button>
+          <button id="action-plan-button" class="bg-emerald-600 text-white font-semibold py-2 px-4 rounded-md shadow-md hover:bg-emerald-700 transition-colors">Action Plan</button>
+          <button id="cigarette-button" class="bg-indigo-600 text-white font-semibold py-2 px-4 rounded-md shadow-md hover:bg-indigo-700 transition-colors">Cigarette Equivalent</button>
+          <button id="school-button" class="bg-rose-600 text-white font-semibold py-2 px-4 rounded-md shadow-md hover:bg-rose-700 transition-colors">School Playtime Advisor</button>
+          <button id="mask-button" class="bg-gray-700 text-white font-semibold py-2 px-4 rounded-md shadow-md hover:bg-gray-800 transition-colors">Mask & Activity Recommender</button>
+        </div>
+
+        <div id="insights-output" class="p-6 bg-slate-50 text-slate-700 rounded-lg min-h-[130px] flex flex-col gap-3 insight-card">
+          <div class="flex items-center justify-center text-slate-500"><p>Click a button to get started.</p></div>
+        </div>
+
+        <div class="mt-4 flex gap-3 items-center">
+          <button id="generate-report-button" class="bg-violet-600 text-white px-4 py-2 rounded-md hover:bg-violet-700">Download 1-page Regulatory-gap PDF (last month)</button>
+          <small class="text-xs text-slate-500">Generates a compact PDF comparing daily mean PM2.5 vs WHO (and shows a mini chart).</small>
+        </div>
+      </div>
+    </section>
+
+    <!-- ABOUT -->
+    <section id="about-section">
+      <div class="bg-white p-8 rounded-xl shadow-lg border border-slate-200">
+        <h2 class="text-3xl font-bold text-slate-900 text-center">About This Project</h2>
+        <div class="mt-6 prose prose-lg text-slate-600 max-w-none">
+          <p>This demo blends public data and heuristics to visualize neighborhood-level air quality and provide actionable health guidance.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="bg-slate-100 border-t border-slate-200 mt-16">
+    <div class="container mx-auto py-6 px-4 sm:px-6 lg:px-8 text-center text-sm text-slate-500">
+      <p>AQ-Vision: Hackathon demo. Data and recommendations are illustrative only.</p>
+    </div>
+  </footer>
+
+  <!-- Load Google Maps via backend redirect to /maps (server inserts the API key) -->
+  <script src="/maps" async defer></script>
+
+  <script>
+    // Wrap everything to avoid leaking globals
+    (function() {
+      // --------- Color scales and helpers ----------
+      const aqiColors = {
+        good: '#4ade80',
+        moderate: '#facc15',
+        unhealthy_sensitive: '#fb923c',
+        unhealthy: '#f87171',
+        very_unhealthy: '#c084fc',
+        hazardous: '#a16207'
+      };
+
+      // EPA PM2.5 AQI breakpoints
+      const epaBreakpoints = [
+        { Clow: 0.0,   Chigh: 12.0,  Ilow: 0,   Ihigh: 50 },
+        { Clow: 12.1,  Chigh: 35.4,  Ilow: 51,  Ihigh: 100 },
+        { Clow: 35.5,  Chigh: 55.4,  Ilow: 101, Ihigh: 150 },
+        { Clow: 55.5,  Chigh: 150.4, Ilow: 151, Ihigh: 200 },
+        { Clow: 150.5, Chigh: 250.4, Ilow: 201, Ihigh: 300 },
+        { Clow: 250.5, Chigh: 500.4, Ilow: 301, Ihigh: 500 }
+      ];
+      function pm25ToEPAAQI(pm) {
+        if (pm === null || isNaN(pm)) return null;
+        for (const bp of epaBreakpoints) {
+          if (pm >= bp.Clow && pm <= bp.Chigh) {
+            const a = (bp.Ihigh - bp.Ilow) / (bp.Chigh - bp.Clow);
+            const b = bp.Ilow - a * bp.Clow;
+            return Math.round(a * pm + b);
+          }
+        }
+        const top = epaBreakpoints[epaBreakpoints.length - 1];
+        return Math.round(((top.Ihigh - top.Ilow) / (top.Chigh - top.Clow) * (pm - top.Clow)) + top.Ilow);
+      }
+      function epaCategory(aqi) {
+        if (aqi === null) return 'Unknown';
+        if (aqi <= 50) return 'Good';
+        if (aqi <= 100) return 'Moderate';
+        if (aqi <= 150) return 'Unhealthy (SG)';
+        if (aqi <= 200) return 'Unhealthy';
+        if (aqi <= 300) return 'Very Unhealthy';
+        return 'Hazardous';
+      }
+
+      // India NAQI (approximate)
+      const indiaConcentrationBreaks = [
+        { Clow: 0,   Chigh: 30,  Ilow: 0,   Ihigh: 50,  label: 'Good' },
+        { Clow: 31,  Chigh: 60,  Ilow: 51,  Ihigh: 100, label: 'Satisfactory' },
+        { Clow: 61,  Chigh: 90,  Ilow: 101, Ihigh: 200, label: 'Moderately Polluted' },
+        { Clow: 91,  Chigh: 120, Ilow: 201, Ihigh: 300, label: 'Poor' },
+        { Clow: 121, Chigh: 250, Ilow: 301, Ihigh: 400, label: 'Very Poor' },
+        { Clow: 251, Chigh: 500, Ilow: 401, Ihigh: 500, label: 'Severe' },
+      ];
+      function pm25ToIndiaAQI(pm) {
+        if (pm === null || isNaN(pm)) return null;
+        for (const bp of indiaConcentrationBreaks) {
+          if (pm >= bp.Clow && pm <= bp.Chigh) {
+            const a = (bp.Ihigh - bp.Ilow) / (bp.Chigh - bp.Clow);
+            const b = bp.Ilow - a * bp.Clow;
+            return { aqi: Math.round(a * pm + b), cat: bp.label };
+          }
+        }
+        const top = indiaConcentrationBreaks[indiaConcentrationBreaks.length - 1];
+        const a = (top.Ihigh - top.Ilow) / (top.Chigh - top.Clow);
+        return { aqi: Math.round(a * pm + (top.Ilow - a * top.Clow)), cat: top.label };
+      }
+
+      function pm25ToEUCategory(pm) {
+        if (pm === null || isNaN(pm)) return 'Unknown';
+        if (pm <= 15) return 'Very low';
+        if (pm <= 30) return 'Low';
+        if (pm <= 55) return 'Medium';
+        if (pm <= 110) return 'High';
+        return 'Very high';
+      }
+
+      function meetsWHO24h(pm) { if (pm === null || isNaN(pm)) return null; return pm <= 15; }
+      function cigaretteEquivalent(pm) { if (pm === null || isNaN(pm)) return null; return pm / 22.0; }
+      function maskRecommendation(pm) {
+        if (pm === null || isNaN(pm)) return { mask: 'Unknown', advice: 'No data' };
+        if (pm <= 35) return { mask: 'No respirator needed', advice: 'Outdoor activities OK for most; vulnerable groups be aware.' };
+        if (pm <= 150) return { mask: 'Consider N95/FFP2', advice: 'Limit prolonged strenuous outdoor activity for sensitive groups.' };
+        return { mask: 'N95 / FFP2 respirator', advice: 'Avoid outdoor exertion; sensitive groups stay indoors.' };
+      }
+      function schoolPlayAdvice(pm) {
+        if (pm === null || isNaN(pm)) return { play: 'Unknown', reason: 'No data' };
+        if (pm <= 50) return { play: 'Yes',      reason: 'Good for all children.' };
+        if (pm <= 100) return { play: 'Caution', reason: 'Reduce strenuous activity for sensitive children.' };
+        if (pm <= 150) return { play: 'Limited', reason: 'Limit outdoor play; keep sessions short.' };
+        return { play: 'No', reason: 'Keep children indoors; use filtered indoor spaces.' };
+      }
+
+      // Color mapping for polygons
+      function getColor(value, pollutant) {
+        const d = value;
+        if (pollutant === 'aqi') {
+          return d > 300 ? aqiColors.hazardous :
+                 d > 200 ? aqiColors.very_unhealthy :
+                 d > 150 ? aqiColors.unhealthy :
+                 d > 100 ? aqiColors.unhealthy_sensitive :
+                 d > 50  ? aqiColors.moderate :
+                           aqiColors.good;
+        }
+        if (pollutant === 'pm25') {
+          return d > 55.5 ? aqiColors.hazardous :
+                 d > 35.5 ? aqiColors.very_unhealthy :
+                 d > 25.5 ? aqiColors.unhealthy :
+                 d > 15.5 ? aqiColors.unhealthy_sensitive :
+                 d > 12.1 ? aqiColors.moderate :
+                           aqiColors.good;
+        }
+        // Simple scales for NO2/O3 (in ppb approximations for demo)
+        if (pollutant === 'no2') {
+          return d > 120 ? aqiColors.hazardous :
+                 d > 80  ? aqiColors.unhealthy :
+                 d > 40  ? aqiColors.moderate :
+                           aqiColors.good;
+        }
+        if (pollutant === 'o3') {
+          return d > 100 ? aqiColors.hazardous :
+                 d > 70  ? aqiColors.unhealthy :
+                 d > 40  ? aqiColors.moderate :
+                           aqiColors.good;
+        }
+        return aqiColors.moderate;
+      }
+
+      // --------- State ----------
+      let map, drawingManager, selectionPolygon = null;
+      let polygons = [];
+      let polygonFeatures = [];
+      let selectedFeatures = [];
+      let useLiveOpenAQ = false;
+      let currentPollutant = 'aqi';
+      let cityCenter = { lat: 12.9716, lng: 77.5946 }; // Bangalore default
+
+      // --------- Map + Data ----------
+      function clearPolygons() {
+        polygons.forEach(p => p.setMap(null));
+        polygons = [];
+        polygonFeatures = [];
+      }
+
+      function addPolygonsToMap(geojson) {
+        clearPolygons();
+        geojson.features.forEach(f => {
+          const coords = f.geometry.coordinates[0].map(pt => ({ lat: pt[1], lng: pt[0] }));
+          const color = getColor(f.properties[currentPollutant === 'aqi' ? 'aqi' : currentPollutant], currentPollutant);
+
+          const poly = new google.maps.Polygon({
+            paths: coords,
+            strokeColor: '#ffffff',
+            strokeWeight: 0.4,
+            fillColor: color,
+            fillOpacity: 0.85,
+            map
+          });
+
+          // compute centroid for info/selection
+          const bounds = new google.maps.LatLngBounds();
+          coords.forEach(c => bounds.extend(new google.maps.LatLng(c.lat, c.lng)));
+          const center = bounds.getCenter();
+          f._centroid = [center.lng(), center.lat()];
+
+          const infowindow = new google.maps.InfoWindow();
+          poly.addListener('click', function(ev) {
+            const props = f.properties;
+            const content = '<div style="font-size:14px"><strong>Zone:</strong> ' + props.zone + '<br>' +
+              '<strong>Overall AQI:</strong> ' + props.aqi + '<br>' +
+              '<strong>PM2.5:</strong> ' + (props.pm25 || 0).toFixed(2) + ' µg/m³<br>' +
+              '<strong>NO₂:</strong> ' + (props.no2 || 0).toFixed(2) + ' ppb<br>' +
+              '<strong>O₃:</strong> ' + (props.o3 || 0).toFixed(2) + ' ppb</div>';
+            infowindow.setContent(content);
+            infowindow.setPosition(ev.latLng || center);
+            infowindow.open(map);
+          });
+
+          polygons.push(poly);
+          polygonFeatures.push(f);
+        });
+      }
+
+      function generateMockGeoData(center, numPoints, boxSize, dayOffset) {
+        const features = [];
+        const zones = ['Industrial Area', 'City Center', 'Residential North', 'Greenbelt South', 'Tech Park East'];
+        for (let i = 0; i < numPoints; i++) {
+          for (let j = 0; j < numPoints; j++) {
+            const lng = center.lng - (boxSize/2) + (j * boxSize/numPoints);
+            const lat = center.lat - (boxSize/2) + (i * boxSize/numPoints);
+            const baseAqi = 50 + (Math.sin(i * 0.5) * 20) + (Math.cos(j * 0.3) * 30) + (Math.random() * 20) + (dayOffset * 5);
+            const aqi = Math.max(10, Math.min(350, baseAqi + (lng - center.lng) * 200));
+            const pm25 = aqi * (0.2 + Math.random() * 0.1);
+            features.push({
+              type: 'Feature',
+              properties: {
+                aqi: Math.round(aqi),
+                pm25,
+                no2: aqi * (0.3 + Math.random() * 0.15),
+                o3:  aqi * (0.25 + Math.random() * 0.1),
+                zone: zones[(i * numPoints + j) % zones.length]
+              },
+              geometry: {
+                type: 'Polygon',
+                coordinates: [[
+                  [lng,                      lat],
+                  [lng + boxSize/numPoints,  lat],
+                  [lng + boxSize/numPoints,  lat + boxSize/numPoints],
+                  [lng,                      lat + boxSize/numPoints],
+                  [lng,                      lat]
+                ]]
+              }
+            });
+          }
+        }
+        return { type: 'FeatureCollection', features };
+      }
+
+      async function updateMap(dayOffset = 0, center = cityCenter) {
+        if (!map) return;
+        map.setCenter({ lat: center.lat, lng: center.lng });
+
+        // mock grid for visualization
+        const geojson = generateMockGeoData(center, 20, 0.4, dayOffset);
+        addPolygonsToMap(geojson);
+
+        // standards cards (live OpenAQ mean if enabled)
+        let pm = geojson.features[Math.floor(geojson.features.length / 2)].properties.pm25;
+        if (useLiveOpenAQ) {
+          try {
+            const r = await fetch('/api/openaq?lat=' + encodeURIComponent(center.lat) + '&lon=' + encodeURIComponent(center.lng));
+            const j = await r.json();
+            pm = j?.mean ?? pm;
+            updateMultiStandardCards(pm, j?.meta?.name || null);
+          } catch (err) {
+            console.error('OpenAQ fetch error:', err);
+            updateMultiStandardCards(pm, null);
+          }
+        } else {
+          updateMultiStandardCards(pm, null);
+        }
+      }
+
+      function updateMultiStandardCards(pm25, sourceName) {
+        const container = document.getElementById('multi-std');
+        container.innerHTML = '';
+        const liveLabel = useLiveOpenAQ ? '<small class="text-slate-500">live</small>' : '<small class="text-slate-400">mock</small>';
+
+        const pmCard = document.createElement('div'); pmCard.className = 'std-card';
+        pmCard.innerHTML = '<div class="text-sm text-slate-600">Reference PM2.5 ' + liveLabel + '</div>' +
+          '<div class="mt-2 text-2xl font-bold text-sky-700">' + (pm25 != null ? pm25.toFixed(1) + ' µg/m³' : 'N/A') + '</div>' +
+          '<div class="text-xs text-slate-500 mt-1">(mean over recent measurements)</div>';
+        container.appendChild(pmCard);
+
+        const epaAqi = pm25ToEPAAQI(pm25);
+        const epaCard = document.createElement('div'); epaCard.className = 'std-card';
+        epaCard.innerHTML = '<div class="text-sm text-slate-600">US-EPA</div>' +
+          '<div class="mt-2 text-xl font-semibold">' + (epaAqi ?? 'N/A') + '</div>' +
+          '<div class="text-sm text-sky-600 mt-1">' + (epaCategory(epaAqi) || '') + '</div>' +
+          '<div class="text-xs text-slate-500 mt-2">EPA PM2.5 → AQI breakpoints.</div>';
+        container.appendChild(epaCard);
+
+        const india = pm25ToIndiaAQI(pm25);
+        const indiaCard = document.createElement('div'); indiaCard.className = 'std-card';
+        indiaCard.innerHTML = '<div class="text-sm text-slate-600">India (NAQI)</div>' +
+          '<div class="mt-2 text-xl font-semibold">' + (india ? india.aqi : 'N/A') + '</div>' +
+          '<div class="text-sm text-sky-600 mt-1">' + (india ? india.cat : '') + '</div>' +
+          '<div class="text-xs text-slate-500 mt-2">CPCB NAQI breakpoints.</div>';
+        container.appendChild(indiaCard);
+
+        const whoCard = document.createElement('div'); whoCard.className = 'std-card';
+        const meets = meetsWHO24h(pm25);
+        whoCard.innerHTML = '<div class="text-sm text-slate-600">WHO (24-hr guideline)</div>' +
+          '<div class="mt-2 text-xl font-semibold">' + (meets == null ? 'N/A' : (meets ? 'Meets' : 'Exceeds')) + '</div>' +
+          '<div class="text-xs text-slate-500 mt-1">WHO 24-hr guideline: 15 µg/m³.</div>';
+        container.appendChild(whoCard);
+
+        const euCard = document.createElement('div'); euCard.className = 'std-card';
+        const euCat = pm25ToEUCategory(pm25);
+        euCard.innerHTML = '<div class="text-sm text-slate-600">EU / CAQI</div>' +
+          '<div class="mt-2 text-xl font-semibold">' + euCat + '</div>' +
+          '<div class="text-xs text-slate-500 mt-1">Approx CAQI category.</div>';
+        container.appendChild(euCard);
+
+        const cigPer = cigaretteEquivalent(pm25);
+        const cigCard = document.createElement('div'); cigCard.className = 'std-card';
+        cigCard.innerHTML = '<div class="text-sm text-slate-600">Cigarette Equivalent</div>' +
+          '<div class="mt-2 text-2xl font-bold">' + (cigPer != null ? cigPer.toFixed(2) : 'N/A') + '/day</div>' +
+          '<div class="text-xs text-slate-500 mt-1">~22 µg/m³ PM2.5 ≈ 1 cigarette/day.</div>';
+        container.appendChild(cigCard);
+      }
+
+      function updateAreaDetails() {
+        const detailsDiv = document.getElementById('selected-area-details');
+        if ((selectedFeatures || []).length > 0) {
+          detailsDiv.classList.remove('hidden');
+          const totalAqi = selectedFeatures.reduce((sum, f) => sum + f.properties.aqi, 0);
+          const avgAqi = totalAqi / selectedFeatures.length;
+          const maxAqi = selectedFeatures.reduce((max, f) => Math.max(max, f.properties.aqi), 0);
+          const zones = [...new Set(selectedFeatures.map(f => f.properties.zone))].join(', ');
+          document.getElementById('avg-aqi').textContent = avgAqi.toFixed(2);
+          document.getElementById('max-aqi').textContent = maxAqi;
+          document.getElementById('zones-list').textContent = zones;
+        } else {
+          detailsDiv.classList.add('hidden');
+        }
+      }
+
+      async function geocodeCity(q) {
+        try {
+          const res = await fetch('https://nominatim.openstreetmap.org/search?format=json&q=' + encodeURIComponent(q), {
+            headers: { 'Accept-Language': 'en' }
+          });
+          if (!res.ok) return [];
+          return await res.json();
+        } catch {
+          return [];
+        }
+      }
+
+      function initCharts() {
+        // Validation scatter
+        const vdata = {
+          labels: Array.from({length:50},(_,i)=>i+1),
+          datasets: [{
+            label:'Predicted vs Actual AQI',
+            data: Array.from({length:50}, () => {
+              const actual = Math.random()*200+20;
+              const predicted = actual + (Math.random()-0.5)*30;
+              return { x: actual, y: predicted };
+            }),
+            backgroundColor:'rgba(56,189,248,0.6)',
+            borderColor:'rgba(14,116,144,1)',
+            borderWidth:1,
+            pointRadius:5
+          }]
+        };
+        const vctx = document.getElementById('validationChart').getContext('2d');
+        new Chart(vctx, {
+          type: 'scatter',
+          data: vdata,
+          options: {
+            responsive:true, maintainAspectRatio:false,
+            scales: { x: { title: { display:true, text:'Actual AQI (Ground)' } }, y: { title: { display:true, text:'Predicted AQI (Model)' } } },
+            plugins: { tooltip: { callbacks: { label: (c) => 'Actual: ' + c.raw.x.toFixed(1) + ', Pred: ' + c.raw.y.toFixed(1) } } }
+          }
+        });
+
+        // Zone bar
+        const zoneData = {
+          labels: ['Industrial Area','City Center','Residential North','Greenbelt South','Tech Park East'],
+          datasets:[{
+            label:'Average AQI',
+            data:[185,152,95,65,120],
+            backgroundColor:['#f87171','#f87171','#facc15','#facc15','#fb923c'],
+            borderColor:'rgba(0,0,0,0.06)',
+            borderWidth:1
+          }]
+        };
+        const zctx = document.getElementById('zoneChart').getContext('2d');
+        new Chart(zctx, {
+          type:'bar',
+          data:zoneData,
+          options:{
+            responsive:true, maintainAspectRatio:false, indexAxis:'y',
+            scales:{ x:{ title:{ display:true, text:'Average AQI' } } },
+            plugins: { legend: { display: false } }
+          }
+        });
+      }
+
+      async function callGeminiApi(prompt, systemInstruction) {
+        const out = document.getElementById('insights-output');
+        out.innerHTML = '<div class="flex justify-center"><div class="spinner"></div></div>';
+        try {
+          const r = await fetch('/api/gemini', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt, systemInstruction })
+          });
+          const j = await r.json();
+          const text = j.text || (j.error ? 'AI error: ' + JSON.stringify(j.error) : 'No response');
+          out.innerHTML = '<div><h4 class="text-lg font-semibold text-slate-800">AI Insight</h4><div class="mt-2 text-slate-700">' + text + '</div></div>';
+        } catch (err) {
+          out.innerHTML = '<div class="text-red-500">Error contacting AI: ' + err.message + '</div>';
+        }
+      }
+
+      function generatePdfReport(labels, values) {
+        // Render chart offscreen to ensure proper dimensions
+        const off = document.createElement('canvas');
+        off.width = 1200;
+        off.height = 500;
+        const ctx = off.getContext('2d');
+
+        // Synchronous rendering (no animation for PDF)
+        new Chart(ctx, {
+          type:'line',
+          data:{ labels, datasets:[{ label:'Daily mean PM2.5', data: values, fill:false, borderColor:'#0ea5e9', borderWidth:2 }]},
+          options:{ responsive:false, animation:false, plugins:{ legend:{ display:false } } }
+        });
+
+        const dataUrl = off.toDataURL('image/png', 1.0);
+
+        const jspdfLib = window.jspdf;
+        if (!jspdfLib || !jspdfLib.jsPDF) {
+          document.getElementById('insights-output').innerHTML = '<div class="text-red-500">PDF generator not available.</div>';
+          return;
+        }
+        const { jsPDF } = jspdfLib;
+        const doc = new jsPDF({ unit:'mm', format:'a4' });
+        doc.setFontSize(14); doc.text('Regulatory Gap Mini-Report', 14, 18);
+        doc.setFontSize(10); doc.text('Location center: ' + cityCenter.lat.toFixed(4) + ', ' + cityCenter.lng.toFixed(4), 14, 26);
+        doc.text('Period: last 31 days (daily means)', 14, 32);
+
+        const validValues = values.filter(v => !isNaN(v));
+        if (validValues.length) {
+          const monthlyMean = validValues.reduce((a,b)=>a+b,0)/validValues.length;
+          doc.text('Monthly mean PM2.5: ' + monthlyMean.toFixed(2) + ' µg/m³', 14, 40);
+          doc.text('WHO 24-hr guideline: 15 µg/m³', 14, 46);
+          const delta = monthlyMean - 15.0;
+          doc.text('Gap vs WHO 24-hr: ' + (delta>=0?'+':'') + delta.toFixed(2) + ' µg/m³', 14, 52);
+        } else {
+          doc.text('Insufficient OpenAQ data to compute monthly mean.', 14, 40);
+        }
+        doc.addImage(dataUrl, 'PNG', 14, 60, 180, 80);
+        doc.setFontSize(9);
+        doc.text('Notes:', 14, 148);
+        doc.text('• WHO 24-hr guideline used for comparison (15 µg/m³).', 14, 153);
+        doc.text('• Data source: OpenAQ (public monitoring network).', 14, 159);
+        doc.save('regulatory_gap_report.pdf');
+      }
+
+      // --------- Events ----------
+      document.addEventListener('click', async (e) => {
+        const id = e.target && e.target.id;
+
+        if (id === 'summarize-and-source-button') {
+          const dataToAnalyze = selectedFeatures.length>0 ? selectedFeatures : polygonFeatures;
+          const mapData = (dataToAnalyze||[]).map(f => f.properties);
+          const prompt = 'Act as a data journalist. Summarize key findings in 2-3 sentences. Data: ' + JSON.stringify(mapData);
+          callGeminiApi(prompt);
+        }
+
+        if (id === 'health-recommendation-button') {
+          const dataToAnalyze = selectedFeatures.length>0 ? selectedFeatures : polygonFeatures;
+          const highestAqi = (dataToAnalyze||[]).reduce((m,f)=>Math.max(m,f.properties.aqi),0);
+          const prompt = 'Act as a public health expert. Highest AQI is ' + highestAqi + '. Provide 2-3 actionable recommendations for the public and sensitive groups.';
+          callGeminiApi(prompt);
+        }
+
+        if (id === 'action-plan-button') {
+          const dataToAnalyze = selectedFeatures.length>0 ? selectedFeatures : polygonFeatures;
+          const highestAqi = (dataToAnalyze||[]).reduce((m,f)=>Math.max(m,f.properties.aqi),0);
+          const prompt = 'Provide a concise 3-point personal action plan given highest AQI ' + highestAqi + '.';
+          callGeminiApi(prompt, 'You are a personalized environmental health advisor. Be direct and empathetic.');
+        }
+
+        if (id === 'cigarette-button') {
+          const out = document.getElementById('insights-output');
+          out.innerHTML = '<div class="flex justify-center"><div class="spinner"></div></div>';
+          try {
+            let pm = null;
+            if (useLiveOpenAQ) {
+              const r = await fetch('/api/openaq?lat=' + cityCenter.lat + '&lon=' + cityCenter.lng);
+              const j = await r.json();
+              pm = j.mean || null;
+            }
+            if (!pm) {
+              const f = polygonFeatures[Math.floor(polygonFeatures.length/2)];
+              pm = f ? f.properties.pm25 : 40;
+            }
+            const cig = pm/22.0;
+            out.innerHTML = '<div><h4 class="text-lg font-semibold text-slate-800">Cigarette Equivalent</h4><p class="mt-2 text-slate-600">PM2.5 ~ <strong>' + pm.toFixed(1) + ' µg/m³</strong> → ~<strong>' + cig.toFixed(2) + '</strong> cigarettes/day (rule-of-thumb).</p></div>';
+          } catch (err) {
+            out.innerHTML = '<div class="text-red-500">Error: ' + err.message + '</div>';
+          }
+        }
+
+        if (id === 'school-button') {
+          const out = document.getElementById('insights-output');
+          out.innerHTML =
+            '<div><h4 class="text-lg font-semibold text-slate-800">School Playtime Advisor</h4>' +
+            '<div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">' +
+              '<div><label class="input-label">Age group</label>' +
+              '<select id="school-age" class="mt-1 block w-full pl-3 pr-3 py-2 border rounded-md">' +
+                '<option value="child">Child (5-12)</option><option value="teen">Teen (13-18)</option><option value="adult">Adult</option>' +
+              '</select></div>' +
+              '<div><label class="input-label">Location radius (m)</label><input id="school-radius" type="number" value="2000" class="mt-1 block w-full pl-3 pr-3 py-2 border rounded-md"/></div>' +
+            '</div><div class="mt-3"><button id="school-run" class="bg-rose-600 text-white px-4 py-2 rounded-md">Get Recommendation</button></div></div>';
+        }
+
+        if (id === 'school-run') {
+          const radius = parseInt(document.getElementById('school-radius').value || '2000', 10);
+          const out = document.getElementById('insights-output');
+          out.innerHTML = '<div class="flex justify-center"><div class="spinner"></div></div>';
+          try {
+            let pm = null;
+            if (useLiveOpenAQ) {
+              const r = await fetch('/api/openaq?lat=' + cityCenter.lat + '&lon=' + cityCenter.lng + '&radius=' + radius);
+              const j = await r.json();
+              pm = j.mean || null;
+            }
+            if (!pm) {
+              const f = polygonFeatures[Math.floor(polygonFeatures.length/2)];
+              pm = f ? f.properties.pm25 : 40;
+            }
+            const advice = schoolPlayAdvice(pm);
+            out.innerHTML = '<div><h4 class="text-lg font-semibold text-slate-800">Playtime Advice: <span class="text-sky-700">' + advice.play + '</span></h4>' +
+              '<p class="mt-2 text-slate-600">' + advice.reason + ' (Observed PM2.5: <strong>' + pm.toFixed(1) + ' µg/m³</strong>).</p></div>';
+          } catch (err) {
+            out.innerHTML = '<div class="text-red-500">Error: ' + err.message + '</div>';
+          }
+        }
+
+        if (id === 'mask-button') {
+          const out = document.getElementById('insights-output');
+          out.innerHTML = `
+            <div>
+              <h4 class="text-lg font-semibold text-slate-800">Mask + Activity Recommender</h4>
+              <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label class="input-label">Vulnerability</label>
+                  <select id="vuln" class="mt-1 block w-full pl-3 pr-3 py-2 border rounded-md">
+                    <option value="general">General</option>
+                    <option value="child">Child</option>
+                    <option value="elderly">Elderly</option>
+                    <option value="asthma">Asthmatic</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="input-label">Activity intensity</label>
+                  <select id="activity-int" class="mt-1 block w-full pl-3 pr-3 py-2 border rounded-md">
+                    <option value="low">Low</option>
+                    <option value="moderate">Moderate</option>
+                    <option value="high">High</option>
+                  </select>
+                </div>
+              </div>
+              <div class="mt-3">
+                <button id="mask-run" class="bg-gray-700 text-white px-4 py-2 rounded-md">
+                  Get Recommendation
+                </button>
+              </div>
+            </div>`;
+        }
+
+        if (id === 'mask-run') {
+          const vuln = document.getElementById('vuln').value;
+          const intensity = document.getElementById('activity-int').value;
+          const out = document.getElementById('insights-output');
+          out.innerHTML = '<div class="flex justify-center"><div class="spinner"></div></div>';
+          try {
+            let pm = null;
+            if (useLiveOpenAQ) {
+              const r = await fetch('/api/openaq?lat=' + cityCenter.lat + '&lon=' + cityCenter.lng);
+              const j = await r.json();
+              pm = j.mean || null;
+            }
+            if (!pm) {
+              const f = polygonFeatures[Math.floor(polygonFeatures.length/2)];
+              pm = f ? f.properties.pm25 : 40;
+            }
+            const rec = maskRecommendation(pm);
+            let recommendedMinutes = 60;
+            if (pm > 150) recommendedMinutes = 0;
+            else if (pm > 100) recommendedMinutes = 15;
+            else if (pm > 50) recommendedMinutes = 30;
+            else recommendedMinutes = 60;
+            if (['child','elderly','asthma'].includes(vuln)) recommendedMinutes = Math.min(recommendedMinutes, 30);
+            if (intensity === 'high') recommendedMinutes = Math.min(recommendedMinutes, 30);
+
+            out.innerHTML = '<div><h4 class="text-lg font-semibold text-slate-800">Recommendation</h4>' +
+              '<p class="mt-2 text-slate-600">Observed PM2.5: <strong>' + pm.toFixed(1) + ' µg/m³</strong>.</p>' +
+              '<p class="mt-2"><strong>Mask:</strong> ' + rec.mask + '.</p>' +
+              '<p class="mt-1"><strong>Activity:</strong> Limit outdoor minutes to <strong>' + recommendedMinutes + '</strong>.</p>' +
+              '<p class="text-xs text-slate-500 mt-2">Mask guidance: N95/FFP2 recommended for high PM2.5 days.</p></div>';
+          } catch (err) {
+            out.innerHTML = '<div class="text-red-500">Error: ' + err.message + '</div>';
+          }
+        }
+
+        if (id === 'generate-report-button') {
+          const out = document.getElementById('insights-output');
+          out.innerHTML = '<div class="flex justify-center"><div class="spinner"></div></div>';
+          try {
+            const r = await fetch('/api/openaq?lat=' + cityCenter.lat + '&lon=' + cityCenter.lng + '&days=31');
+            const j = await r.json();
+            const series = j.raw || [];
+            const groups = {};
+            series.forEach(s => {
+              const d = (s.date || '').split('T')[0];
+              groups[d] = groups[d] || [];
+              const val = Number(s.value);
+              if (!isNaN(val)) groups[d].push(val);
+            });
+
+            const days = 31;
+            const today = new Date();
+            const labels = [];
+            const values = [];
+            for (let i = days-1; i >= 0; i--) {
+              const dt = new Date(today.getTime() - i*24*3600*1000);
+              const key = dt.toISOString().split('T')[0];
+              labels.push(key);
+              const arr = groups[key] || [];
+              values.push(arr.length ? (arr.reduce((a,b)=>a+b,0)/arr.length) : NaN);
+            }
+
+            generatePdfReport(labels, values);
+            out.innerHTML = '<div class="text-slate-700">PDF generated and downloaded.</div>';
+          } catch (err) {
+            out.innerHTML = '<div class="text-red-500">PDF generation failed: ' + err.message + '</div>';
+          }
+        }
+
+        if (id === 'city-search-btn') {
+          const q = document.getElementById('city-search').value.trim();
+          if (!q) return;
+          const results = await geocodeCity(q);
+          if (!results.length) { alert('No results'); return; }
+          const best = results[0];
+          cityCenter = { lat: parseFloat(best.lat), lng: parseFloat(best.lon) };
+          document.getElementById('lat-input').value = cityCenter.lat.toFixed(4);
+          document.getElementById('lon-input').value = cityCenter.lng.toFixed(4);
+          updateMap(0, cityCenter);
+        }
+
+        if (id === 'latlon-go') {
+          const lat = parseFloat(document.getElementById('lat-input').value);
+          const lon = parseFloat(document.getElementById('lon-input').value);
+          if (!isFinite(lat) || !isFinite(lon)) { alert('Enter valid lat/lon'); return; }
+          cityCenter = { lat, lng: lon };
+          updateMap(0, cityCenter);
+        }
+
+        if (id === 'use-location') {
+          if (!navigator.geolocation) { alert('Geolocation not supported'); return; }
+          navigator.geolocation.getCurrentPosition(pos => {
+            cityCenter = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+            document.getElementById('lat-input').value = cityCenter.lat.toFixed(4);
+            document.getElementById('lon-input').value = cityCenter.lng.toFixed(4);
+            updateMap(0, cityCenter);
+          }, err => alert('Could not get location: ' + err.message));
+        }
+
+        if (id === 'toggle-live') {
+          useLiveOpenAQ = !useLiveOpenAQ;
+          document.getElementById('toggle-live').textContent = useLiveOpenAQ ? 'Using live OpenAQ data' : 'Use live OpenAQ data';
+          updateMap(0, cityCenter);
+        }
+
+        if (id === 'clear-area-button') {
+          if (selectionPolygon) { selectionPolygon.setMap(null); selectionPolygon = null; }
+          selectedFeatures = [];
+          updateAreaDetails();
+        }
+      });
+
+      document.getElementById('date-slider').addEventListener('input', function(e){
+        const dayValue = parseInt(e.target.value);
+        const dayOffset = 7 - dayValue;
+        const date = new Date(); date.setDate(date.getDate() - dayOffset);
+        document.getElementById('date-label').textContent = date.toISOString().split('T')[0];
+        updateMap(dayOffset, cityCenter);
+      });
+
+      document.getElementById('pollutant-select').addEventListener('change', function(e){
+        currentPollutant = e.target.value;
+        updateMap(0, cityCenter);
+        const pollDesc = {
+          aqi:'AQI summarizes overall air pollution using a single number and color.',
+          pm25:'PM2.5 are tiny particles under 2.5 µm that can reach deep into the lungs.',
+          no2:'NO₂ forms from combustion (traffic, power plants).',
+          o3:'Ground-level ozone forms from chemical reactions in sunlight.'
+        };
+        document.getElementById('pollutant-description').textContent = pollDesc[currentPollutant] || '';
+      });
+
+      // --------- Map Initialization ----------
+      function initMap() {
+        map = new google.maps.Map(document.getElementById('map'), {
+          center: cityCenter,
+          zoom: 11,
+          mapTypeId: 'roadmap',
+          gestureHandling: 'greedy'
+        });
+
+        drawingManager = new google.maps.drawing.DrawingManager({
+          drawingMode: null,
+          drawingControl: true,
+          drawingControlOptions: {
+            position: google.maps.ControlPosition.TOP_RIGHT,
+            drawingModes: ['polygon']
+          },
+          polygonOptions: {
+            fillColor: '#ffff00',
+            fillOpacity: 0.1,
+            strokeWeight: 2,
+            clickable: true,
+            editable: false,
+            zIndex: 1
+          }
+        });
+        drawingManager.setMap(map);
+
+        google.maps.event.addListener(drawingManager, 'overlaycomplete', function(event) {
+          if (selectionPolygon) { selectionPolygon.setMap(null); selectionPolygon = null; selectedFeatures = []; }
+          if (event.type === 'polygon') {
+            selectionPolygon = event.overlay;
+            selectedFeatures = polygonFeatures.filter(f => {
+              const latlng = f._centroid; // [lng, lat]
+              const point = new google.maps.LatLng(latlng[1], latlng[0]);
+              return google.maps.geometry.poly.containsLocation(point, selectionPolygon);
+            });
+            updateAreaDetails();
+          }
+          drawingManager.setDrawingMode(null);
+        });
+
+        updateMap(0, cityCenter);
+      }
+
+      function waitForGoogleAndInit() {
+        const start = Date.now();
+        const tm = setInterval(() => {
+          if (window.google && window.google.maps && window.google.maps.drawing && window.google.maps.geometry) {
+            clearInterval(tm);
+            initMap();
+            initCharts();
+            document.getElementById('date-label').textContent = new Date().toISOString().split('T')[0];
+          } else if (Date.now() - start > 15000) {
+            clearInterval(tm);
+            const el = document.getElementById('map');
+            el.innerHTML = '<div class="p-4 text-red-600">Google Maps failed to load. Check GOOGLE_MAPS_API_KEY and /maps route.</div>';
+          }
+        }, 200);
+      }
+
+      // Kick off after DOM is ready
+      document.addEventListener('DOMContentLoaded', waitForGoogleAndInit);
+    })();
+  </script>
+</body>
+</html>
